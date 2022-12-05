@@ -1,0 +1,102 @@
+#    Copyright (c) 2022 Fraunhofer Institute for Software and Systems Engineering
+#
+#    This program and the accompanying materials are made available under the
+#    terms of the Apache License, Version 2.0 which is available at
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+#    SPDX-License-Identifier: Apache-2.0
+#
+#    Contributors:
+#         Fraunhofer Institute for Software and Systems Engineering - initial API and implementation
+#
+
+version: "3.9"  # optional since v1.27.0
+
+networks:
+  edc_network:
+    driver: bridge
+
+services:
+  edc:
+    build: .
+    container_name: edc
+    environment:
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: bootx
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: changeme
+      IDS_WEBHOOK_ADRESS: localhost
+
+      EDC_API_KEY: password
+    ports:
+      - 8181:8181
+      - 8182:8182
+      - 8183:8183
+      - 8282:8282
+    networks:
+      - edc_network
+    depends_on:
+      - postgresql
+      - elasticsearch
+
+  postgresql:
+    image: postgres
+    container_name: postgresql
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: bootx
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db:/var/lib/postgresql/data
+    networks:
+      - edc_network
+    ports:
+      - 5432:5432
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.4.3
+    container_name: logstash
+    restart: always
+    environment:
+      Test: test
+    networks:
+      - edc_network
+    volumes:
+      - ./logstash_config/pipeline/:/usr/share/logstash/pipeline/
+      - [YOUR AWS VAULT]: [targetLocation]
+
+  elasticsearch:
+    container_name: elastic
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.4.2
+    environment:
+      - ES_JAVA_OPTS = "-Xms2048m -Xmx2048m"
+      - xpack.security.enabled=false
+      - "discovery.type=single-node"
+      - logger.level=WARN
+    networks:
+      - edc_network
+    ports:
+      - 9200:9200
+    volumes:
+      - esdata:/usr/share/elasticsearch/data:rw
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:8.4.2
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elastic:9200
+    networks:
+      - edc_network
+    depends_on:
+      - elasticsearch
+    ports:
+      - 5601:5601
+
+volumes:
+  db:
+    driver: local
+  esdata:
+    driver: local
